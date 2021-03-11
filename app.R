@@ -23,7 +23,7 @@ con <- dbPool(
 
 
 
-bq_auth(path = "/Users/aris/Desktop/Website/RShiny US Covid Tracker/UScovidtracker/covid19rshinyapp-d6d0a4f39ca5.json")
+bq_auth(path = "covid19rshinyapp-d6d0a4f39ca5.json")
 
 
 
