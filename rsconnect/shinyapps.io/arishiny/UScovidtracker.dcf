@@ -1,0 +1,12 @@
+name: UScovidtracker
+title: UScovidtracker
+username:
+account: arishiny
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3772284
+bundleId: 4329965
+url: https://arishiny.shinyapps.io/UScovidtracker/
+when: 1615450983.26386
+asMultiple: FALSE
+asStatic: FALSE
