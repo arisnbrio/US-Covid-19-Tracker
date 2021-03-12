@@ -71,9 +71,12 @@ ui <- dashboardPage(
                     choices = c("U.S", state_names_list)),
         
         # third input
-        sliderInput("radius", "Adjus Size of Radius:",
+        sliderInput("radius", "Adjust Size of Radius:",
                     min = 1, max = 10, value = 5),
         
+        # third input
+        sliderInput("weight", "Adjust Weight of Circles:",
+                    min = 1, max = 10, value = 1),
         
         radioButtons("newx",
                      "Track",
@@ -81,7 +84,7 @@ ui <- dashboardPage(
     ),
     dashboardBody(
         fluidRow(
-            box( width = 12,
+            box(width = 12,
                 leafletOutput("leafmap")
             
                 )),
@@ -111,11 +114,11 @@ server <- function(input, output,session) {
                 new_confirmed = sum(new_confirmed,na.rm=TRUE),
                 new_deceased = sum(new_deceased,na.rm = TRUE),
                 new_tested = sum(new_tested,na.rm =TRUE)) %>% 
-            collect() %>% mutate(popup_info = paste(state,",<br/>",
-                                                    city_county,"<br/>",
-                                                    new_confirmed, "New Confirmed Cases<br/>",
-                                                    new_deceased, "New Deaths<br/>",
-                                                    new_tested, "New Tested <br/>"))
+            collect() %>% mutate(popup_info = paste("<b>",state,"</b><br/>",
+                                                    "<b>",city_county,"</b><br/>",
+                                                    "New Confirmed:", new_confirmed, "<br/>",
+                                                    "New Deaths:", new_deceased, "<br/>",
+                                                    "New Tested:", new_tested, "<br/>"))
     })
     
         summary_state <- reactive({
@@ -171,15 +174,18 @@ server <- function(input, output,session) {
 
     output$leafmap <- renderLeaflet({
         
+        basemap <- leaflet() %>% addProviderTiles(providers$OpenStreetMap)
+        
         case.colconf <- colorNumeric(rev(brewer.pal(5, name = "Spectral")),summary_df()$new_confirmed,na.color = 'transparent')
         case.coldeath <- colorNumeric(rev(brewer.pal(5, name = "Spectral")),summary_df()$new_deceased,na.color = 'transparent')
         case.coltest <- colorNumeric(rev(brewer.pal(5, name = "Spectral")),summary_df()$new_tested,na.color = 'transparent')
         
         if (input$state == 'U.S' && input$newx == 'New Confirmed Cases'){
-            leaflet() %>% addProviderTiles(providers$CartoDB.Positron) %>% 
+            basemap %>% 
             addCircleMarkers(data = summary_df(), 
                             lat = ~latitude, 
                             lng = ~longitude,
+                            weight = input$weight,
                             radius = ~(new_confirmed)^(input$radius/25),
                             popup = ~popup_info,
                             color = ~case.colconf(summary_df()$new_confirmed)) %>%
@@ -187,13 +193,14 @@ server <- function(input, output,session) {
                 position = 'topright',
                 values = summary_df()$new_confirmed,
                 pal = case.colconf,
-                title = "New Confirmed Cases") %>% 
+                title = "New Cases<br/>by County") %>% 
             setView(lng = -98.583, lat = 39.833, zoom = 4) 
         } else if(input$state == 'U.S' && input$newx == 'New Deaths'){
-            leaflet() %>% addProviderTiles(providers$CartoDB.Positron) %>% 
+            basemap %>% 
                 addCircleMarkers(data = summary_df(), 
                                  lat = ~latitude, 
                                  lng = ~longitude,
+                                 weight = input$weight,
                                  radius = ~(new_deceased)^(input$radius/25),
                                  popup = ~popup_info,
                                  color = ~case.coldeath(summary_df()$new_deceased)) %>%
@@ -201,14 +208,14 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_deceased,
                     pal = case.coldeath,
-                    title = "New Deaths") %>% 
+                    title = "New Deaths<br/>by County") %>% 
                 setView(lng = -98.583, lat = 39.833, zoom = 4)
         } else if(input$state == 'U.S' && input$newx == 'New Tested'){
-            leaflet() %>% addProviderTiles(providers$CartoDB.Positron) %>% 
+            basemap %>% 
                 addCircleMarkers(data = summary_df(), 
                                  lat = ~latitude, 
                                  lng = ~longitude,
-                                 weight = 1,
+                                 weight = input$weight,
                                  radius = ~(new_tested)^(input$radius/25),
                                  popup = ~popup_info,
                                  color = ~case.coltest(summary_df()$new_tested)) %>% 
@@ -216,14 +223,14 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_tested,
                     pal = case.coltest,
-                    title = "New Tested") %>% 
+                    title = "New Tested<br/>by County") %>% 
                 setView(lng = -98.583, lat = 39.833, zoom = 4)
-            
         } else if(input$state != 'U.S' && input$newx == "New Confirmed Cases"){
-            leaflet() %>% addProviderTiles(providers$CartoDB.Positron) %>% 
+            basemap %>% 
                 addCircleMarkers(data = summary_df(), 
                                  lat = ~latitude, 
                                  lng = ~longitude,
+                                 weight = input$weight,
                                  radius = ~(new_confirmed)^(input$radius/25),
                                  popup = ~popup_info,
                                  color = ~case.colconf(summary_df()$new_confirmed)) %>%
@@ -231,13 +238,14 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_confirmed,
                     pal = case.colconf,
-                    title = "New Confirmed Cases") %>% 
+                    title = "New Cases<br/>by County") %>% 
                 setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5) 
         } else if(input$state != 'U.S' && input$newx == 'New Deaths'){
-            leaflet() %>% addProviderTiles(providers$CartoDB.Positron) %>% 
+            basemap %>% 
                 addCircleMarkers(data = summary_df(), 
                                  lat = ~latitude, 
                                  lng = ~longitude,
+                                 weight = input$weight,
                                  radius = ~(new_deceased)^(input$radius/25),
                                  popup = ~popup_info,
                                  color = ~case.coldeath(summary_df()$new_deceased)) %>%
@@ -245,13 +253,14 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_deceased,
                     pal = case.coldeath,
-                    title = "New Deaths") %>% 
+                    title = "New Deaths<br/>by County") %>% 
                 setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5)
         } else {
-            leaflet() %>% addProviderTiles(providers$CartoDB.Positron) %>% 
+            basemap %>% 
                 addCircleMarkers(data = summary_df(), 
                                  lat = ~latitude, 
                                  lng = ~longitude,
+                                 weight = input$weight,
                                  radius = ~(new_tested)^(input$radius/25),
                                  popup = ~popup_info,
                                  color = ~case.coltest(summary_df()$new_tested)) %>%
@@ -259,7 +268,7 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_tested,
                     pal = case.coltest,
-                    title = "New Tested") %>% 
+                    title = "New Tested<br/>by County") %>% 
                 setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5)
         }
     }) 
@@ -270,7 +279,7 @@ server <- function(input, output,session) {
             } else{
                 summary_state()$new_confirmed   
             },
-            "New Confirmed Cases",
+            "New Cases",
             icon = icon("check-circle"), color = "blue"
         )
             
