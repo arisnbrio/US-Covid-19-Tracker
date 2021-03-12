@@ -23,13 +23,13 @@ con <- dbPool(
 
 
 
-bq_auth(path = "covid19rshinyapp-d6d0a4f39ca5.json")
+bq_auth(path = "/Users/aris/Desktop/Website/RShiny US COVID APP/covid19rshinyapp-c16e515235ee.json")
 
 
 
 summary_dbl <- tbl(con,"covid19_open_data") %>% 
     filter(country_name == "United States of America",
-    !is.na(subregion1_name)) %>%
+           !is.na(subregion1_name)) %>%
     select(date, subregion1_name, subregion2_name,
            new_confirmed,new_deceased, new_tested, 
            latitude, longitude,
@@ -86,13 +86,13 @@ ui <- dashboardPage(
         fluidRow(
             box(width = 12,
                 leafletOutput("leafmap")
-            
-                )),
+                
+            )),
         fluidRow(
-                 valueBoxOutput("confirmedTot"),
-                 valueBoxOutput("deathsTot"),
-                 valueBoxOutput("testedTot")
-            ),
+            valueBoxOutput("confirmedTot"),
+            valueBoxOutput("deathsTot"),
+            valueBoxOutput("testedTot")
+        ),
         fluidRow(
             box(
                 width = 500, solidHeader=T,
@@ -121,57 +121,57 @@ server <- function(input, output,session) {
                                                     "New Tested:", new_tested, "<br/>"))
     })
     
-        summary_state <- reactive({
-            summary_dbl %>%
-                filter(date >= !!input$date[1] && date <= !!input$date[2],
-                       is.na(city_county),
-                       state == !!input$state) %>%
-                group_by(state, latitude, longitude) %>%
-                summarize(
-                    new_confirmed = sum(new_confirmed,na.rm=TRUE),
-                    new_deceased = sum(new_deceased,na.rm = TRUE),
-                    new_tested = sum(new_tested,na.rm =TRUE)) %>%
-                collect() %>% arrange(desc(new_confirmed)) %>% head(1)
-            
+    summary_state <- reactive({
+        summary_dbl %>%
+            filter(date >= !!input$date[1] && date <= !!input$date[2],
+                   is.na(city_county),
+                   state == !!input$state) %>%
+            group_by(state, latitude, longitude) %>%
+            summarize(
+                new_confirmed = sum(new_confirmed,na.rm=TRUE),
+                new_deceased = sum(new_deceased,na.rm = TRUE),
+                new_tested = sum(new_tested,na.rm =TRUE)) %>%
+            collect() %>% arrange(desc(new_confirmed)) %>% head(1)
+        
     })
-        summary_country <- reactive({
-            tbl(con,"covid19_open_data") %>%
-                filter(date >= !!input$date[1] && date <= !!input$date[2],
-                       country_name == "United States of America",
-                       is.na(subregion1_name)) %>% 
-                group_by(country_name) %>%
-                summarize(
-                    new_confirmed = sum(new_confirmed,na.rm=TRUE),
-                    new_deceased = sum(new_deceased,na.rm = TRUE),
-                    new_tested = sum(new_tested,na.rm =TRUE)) %>% collect()
+    summary_country <- reactive({
+        tbl(con,"covid19_open_data") %>%
+            filter(date >= !!input$date[1] && date <= !!input$date[2],
+                   country_name == "United States of America",
+                   is.na(subregion1_name)) %>% 
+            group_by(country_name) %>%
+            summarize(
+                new_confirmed = sum(new_confirmed,na.rm=TRUE),
+                new_deceased = sum(new_deceased,na.rm = TRUE),
+                new_tested = sum(new_tested,na.rm =TRUE)) %>% collect()
     })
-        plot_func_state <- reactive({
-            summary_dbl %>%
-                filter(date >= !!input$date[1] && date <= !!input$date[2],
-                       is.na(city_county),
-                       state == !!input$state) %>%
-                group_by(date, state) %>%
-                summarize(
-                    new_confirmed = sum(new_confirmed,na.rm=TRUE),
-                    new_deceased = sum(new_deceased,na.rm = TRUE),
-                    new_tested = sum(new_tested,na.rm =TRUE)) %>% collect()
+    plot_func_state <- reactive({
+        summary_dbl %>%
+            filter(date >= !!input$date[1] && date <= !!input$date[2],
+                   is.na(city_county),
+                   state == !!input$state) %>%
+            group_by(date, state) %>%
+            summarize(
+                new_confirmed = sum(new_confirmed,na.rm=TRUE),
+                new_deceased = sum(new_deceased,na.rm = TRUE),
+                new_tested = sum(new_tested,na.rm =TRUE)) %>% collect()
     })
-        plot_func_country <- reactive({
-           tbl(con,"covid19_open_data") %>%
-                filter(date >= !!input$date[1] && date <= !!input$date[2],
-                       country_name == "United States of America",
-                       new_confirmed != 0,
-                       is.na(subregion1_name)) %>% 
-                group_by(date, country_name) %>%
-                summarize(
-                    new_confirmed = sum(new_confirmed,na.rm=TRUE),
-                    new_deceased = sum(new_deceased,na.rm = TRUE),
-                    new_tested = sum(new_tested,na.rm =TRUE)) %>% 
-               collect()
-               
-            
+    plot_func_country <- reactive({
+        tbl(con,"covid19_open_data") %>%
+            filter(date >= !!input$date[1] && date <= !!input$date[2],
+                   country_name == "United States of America",
+                   new_confirmed != 0,
+                   is.na(subregion1_name)) %>% 
+            group_by(date, country_name) %>%
+            summarize(
+                new_confirmed = sum(new_confirmed,na.rm=TRUE),
+                new_deceased = sum(new_deceased,na.rm = TRUE),
+                new_tested = sum(new_tested,na.rm =TRUE)) %>% 
+            collect()
+        
+        
     })
-
+    
     output$leafmap <- renderLeaflet({
         
         basemap <- leaflet() %>% addProviderTiles(providers$OpenStreetMap)
@@ -182,19 +182,19 @@ server <- function(input, output,session) {
         
         if (input$state == 'U.S' && input$newx == 'New Confirmed Cases'){
             basemap %>% 
-            addCircleMarkers(data = summary_df(), 
-                            lat = ~latitude, 
-                            lng = ~longitude,
-                            weight = input$weight,
-                            radius = ~(new_confirmed)^(input$radius/25),
-                            popup = ~popup_info,
-                            color = ~case.colconf(summary_df()$new_confirmed)) %>%
-            addLegend(
-                position = 'topright',
-                values = summary_df()$new_confirmed,
-                pal = case.colconf,
-                title = "New Cases<br/>by County") %>% 
-            setView(lng = -98.583, lat = 39.833, zoom = 4) 
+                addCircleMarkers(data = summary_df(), 
+                                 lat = ~latitude, 
+                                 lng = ~longitude,
+                                 weight = input$weight,
+                                 radius = ~(new_confirmed)^(input$radius/25),
+                                 popup = ~popup_info,
+                                 color = ~case.colconf(summary_df()$new_confirmed)) %>%
+                addLegend(
+                    position = 'topright',
+                    values = summary_df()$new_confirmed,
+                    pal = case.colconf,
+                    title = "New Cases<br/>by County") %>% 
+                setView(lng = -98.583, lat = 39.833, zoom = 4) 
         } else if(input$state == 'U.S' && input$newx == 'New Deaths'){
             basemap %>% 
                 addCircleMarkers(data = summary_df(), 
@@ -219,7 +219,7 @@ server <- function(input, output,session) {
                                  radius = ~(new_tested)^(input$radius/25),
                                  popup = ~popup_info,
                                  color = ~case.coltest(summary_df()$new_tested)) %>% 
-                 addLegend(
+                addLegend(
                     position = 'topright',
                     values = summary_df()$new_tested,
                     pal = case.coltest,
@@ -274,15 +274,15 @@ server <- function(input, output,session) {
     }) 
     output$confirmedTot <- renderValueBox({
         valueBox(
-        if(input$state == "U.S"){
-            summary_country()$new_confirmed
+            if(input$state == "U.S"){
+                summary_country()$new_confirmed
             } else{
                 summary_state()$new_confirmed   
             },
             "New Cases",
             icon = icon("check-circle"), color = "blue"
         )
-            
+        
         
     })
     output$deathsTot <- renderValueBox({
