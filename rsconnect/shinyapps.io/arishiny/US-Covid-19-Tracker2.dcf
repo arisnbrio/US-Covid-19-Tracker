@@ -1,0 +1,12 @@
+name: US-Covid-19-Tracker2
+title: US-Covid-19-Tracker2
+username:
+account: arishiny
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3785257
+bundleId: 4339630
+url: https://arishiny.shinyapps.io/US-Covid-19-Tracker2/
+when: 1615643029.67818
+asMultiple: FALSE
+asStatic: FALSE
