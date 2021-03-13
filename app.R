@@ -12,17 +12,28 @@ library(pool)
 
 # Establishing connection
 
+# reading in external files to get population/demographic data to join
+index <- read.csv("https://storage.googleapis.com/covid19-open-data/v2/index.csv")
+demo <- read.csv("https://storage.googleapis.com/covid19-open-data/v2/demographics.csv")
 
+pop <- index %>% inner_join(demo, by = "key") %>% 
+  filter(country_name == "United States of America",
+         !is.na(subregion1_name)) %>%
+  select(key, subregion1_name, subregion2_name, population) %>%
+  rename(state = subregion1_name, 
+         city_county = subregion2_name, 
+         location_key = key) 
+pop <- pop[!(is.na(pop$city_county) | pop$city_county ==""), ] # removed "" values
 
 con <- dbPool(
     drv = bigrquery::bigquery(),
     project = "bigquery-public-data",
     dataset = "covid19_open_data",
     billing = "covid19rshinyapp"
-)
+) # connection to bigquery
 
 
-
+# authenticate
 bq_auth(path = "/Users/aris/Desktop/Website/RShiny US COVID APP/covid19rshinyapp-c16e515235ee.json")
 
 
@@ -30,7 +41,7 @@ bq_auth(path = "/Users/aris/Desktop/Website/RShiny US COVID APP/covid19rshinyapp
 summary_dbl <- tbl(con,"covid19_open_data") %>% 
     filter(country_name == "United States of America",
            !is.na(subregion1_name)) %>%
-    select(date, subregion1_name, subregion2_name,
+    select(location_key, date, subregion1_name, subregion2_name,
            new_confirmed,new_deceased, new_tested, 
            latitude, longitude,
            cumulative_confirmed,cumulative_deceased, cumulative_tested) %>% 
@@ -38,7 +49,9 @@ summary_dbl <- tbl(con,"covid19_open_data") %>%
     mutate(new_tested = abs(new_tested),
            new_confirmed = abs(new_confirmed),
            new_deceased = abs(new_deceased))
-
+# some data cleaning to focus on the U.S
+# negative values in tested/confirmed/deceased fixed
+# renaming into easier names
 
 
 
@@ -46,50 +59,54 @@ state_names_list <- summary_dbl %>% select(state) %>%
     distinct(state) %>% 
     filter(!is.na(state)) %>%
     arrange(state) %>% 
-    collect() %>% rename(State = state)
+    collect() %>% rename(State = state) # list of states in dataset alphabetically
 
 
 
 ui <- dashboardPage(
     dashboardHeader(title = "U.S COVID-19 Tracker"),
-    dashboardSidebar(
+    dashboardSidebar( # in sidebar tab
         
         title = "Options",
         
-        # first input
+        # date input
         dateRangeInput('date',
                        strong('Date Range'),
                        start = "2021-01-01",
                        min = "2020-01-22",
                        max = as.character(Sys.Date()),
                        end = "2021-01-29"),
-        textOutput("DateRange"),
+        textOutput("DateRange"), # for error
         
-        # second input
+        #input for selecting state 
         selectInput('state',
                     'State',
                     choices = c("U.S", state_names_list)),
         
-        # third input
+        # true/false to scale map
+        checkboxInput("per100","Scale Map to per 100,000 people",value=FALSE),
+        
+        #  what to track
+        radioButtons("newx",
+                     "Track",
+                     choices = c("New Confirmed Cases", "New Deaths", "New Tested")),
+
+        # visual controls
         sliderInput("radius", "Adjust Size of Radius:",
                     min = 1, max = 10, value = 5),
         
-        # third input
+
         sliderInput("weight", "Adjust Weight of Circles:",
-                    min = 1, max = 10, value = 1),
-        
-        radioButtons("newx",
-                     "Track",
-                     choices = c("New Confirmed Cases", "New Deaths", "New Tested"))
+                    min = 1, max = 10, value = 1)
     ),
     dashboardBody(
         fluidRow(
             box(width = 12,
-                leafletOutput("leafmap")
+                leafletOutput("leafmap") # output leaflet map in main body
                 
             )),
         fluidRow(
-            valueBoxOutput("confirmedTot"),
+            valueBoxOutput("confirmedTot"), # boxes
             valueBoxOutput("deathsTot"),
             valueBoxOutput("testedTot")
         ),
@@ -97,7 +114,7 @@ ui <- dashboardPage(
             box(
                 width = 500, solidHeader=T,
                 collapsible = T,
-                plotOutput("plotSumm")))
+                plotOutput("plotSumm"))) # plotting of date,cases
     )
 )
 # Define server logic required to draw a histogram
@@ -105,22 +122,48 @@ server <- function(input, output,session) {
     
     
     summary_df <- reactive({
-        summary_dbl %>%
-            filter(date >= !!input$date[1] && date <= !!input$date[2],
+      if(input$per100==TRUE){ # if scaled
+          summary_dbl %>%
+            filter(date >= !!input$date[1] && date <= !!input$date[2], # filter by input date
                    !is.na(city_county)) %>% # removes state totals
-            select(date, state, city_county, new_confirmed, new_deceased, new_tested, latitude, longitude) %>%
-            group_by(city_county, state, latitude, longitude) %>% 
+            group_by(city_county, location_key, latitude, longitude, state) %>% # grouping county together
             summarize(
-                new_confirmed = sum(new_confirmed,na.rm=TRUE),
+                new_confirmed = sum(new_confirmed,na.rm=TRUE), # sums
                 new_deceased = sum(new_deceased,na.rm = TRUE),
-                new_tested = sum(new_tested,na.rm =TRUE)) %>% 
-            collect() %>% mutate(popup_info = paste("<b>",state,"</b><br/>",
+                new_tested = sum(new_tested,na.rm =TRUE)) %>%
+             collect() %>% inner_join(pop, key = "location_key") %>% # joining population data to scale
+          mutate( # scale per 100,000 people (population)
+            new_confirmed = round((new_confirmed/population*100000),2),
+            new_deceased = round((new_deceased/population*100000),2),
+            new_tested = round((new_tested/population*100000),2)) %>%
+             mutate(popup_info = paste("<b>",state,"</b><br/>",
                                                     "<b>",city_county,"</b><br/>",
                                                     "New Confirmed:", new_confirmed, "<br/>",
                                                     "New Deaths:", new_deceased, "<br/>",
                                                     "New Tested:", new_tested, "<br/>"))
-    })
+          # popup_info adds labels over the bubbles
+        
     
+      }else{ # if not scaled (raw case numbers)
+        summary_dbl %>%
+          filter(date >= !!input$date[1] && date <= !!input$date[2],
+                 !is.na(city_county)) %>% # removes state totals
+          group_by(city_county, location_key, latitude, longitude, state) %>%
+          summarize(
+            new_confirmed = sum(new_confirmed,na.rm=TRUE),
+            new_deceased = sum(new_deceased,na.rm = TRUE),
+            new_tested = sum(new_tested,na.rm =TRUE)) %>%
+          collect() %>%
+          mutate(popup_info = paste("<b>",state,"</b><br/>",
+                                    "<b>",city_county,"</b><br/>",
+                                    "New Confirmed:", new_confirmed, "<br/>",
+                                    "New Deaths:", new_deceased, "<br/>",
+                                    "New Tested:", new_tested, "<br/>"))
+      }
+    })
+
+
+    # state specific info
     summary_state <- reactive({
         summary_dbl %>%
             filter(date >= !!input$date[1] && date <= !!input$date[2],
@@ -131,9 +174,10 @@ server <- function(input, output,session) {
                 new_confirmed = sum(new_confirmed,na.rm=TRUE),
                 new_deceased = sum(new_deceased,na.rm = TRUE),
                 new_tested = sum(new_tested,na.rm =TRUE)) %>%
-            collect() %>% arrange(desc(new_confirmed)) %>% head(1)
+            collect() %>% arrange(desc(new_confirmed)) %>% head(1) 
         
     })
+    # country specific info
     summary_country <- reactive({
         tbl(con,"covid19_open_data") %>%
             filter(date >= !!input$date[1] && date <= !!input$date[2],
@@ -145,6 +189,7 @@ server <- function(input, output,session) {
                 new_deceased = sum(new_deceased,na.rm = TRUE),
                 new_tested = sum(new_tested,na.rm =TRUE)) %>% collect()
     })
+    # plot for state
     plot_func_state <- reactive({
         summary_dbl %>%
             filter(date >= !!input$date[1] && date <= !!input$date[2],
@@ -156,6 +201,7 @@ server <- function(input, output,session) {
                 new_deceased = sum(new_deceased,na.rm = TRUE),
                 new_tested = sum(new_tested,na.rm =TRUE)) %>% collect()
     })
+    # plot for country
     plot_func_country <- reactive({
         tbl(con,"covid19_open_data") %>%
             filter(date >= !!input$date[1] && date <= !!input$date[2],
@@ -171,11 +217,15 @@ server <- function(input, output,session) {
         
         
     })
-    
+    # leafmap
     output$leafmap <- renderLeaflet({
-        
-        basemap <- leaflet() %>% addProviderTiles(providers$OpenStreetMap)
-        
+        # change static map options here
+        basemap <- leaflet() %>% addProviderTiles("OpenStreetMap") %>% 
+            setMaxBounds( lng1 = -10
+                          , lat1 = 10
+                          , lng2 = -180
+                          , lat2 = 90)
+        # color palettes
         case.colconf <- colorNumeric(rev(brewer.pal(5, name = "Spectral")),summary_df()$new_confirmed,na.color = 'transparent')
         case.coldeath <- colorNumeric(rev(brewer.pal(5, name = "Spectral")),summary_df()$new_deceased,na.color = 'transparent')
         case.coltest <- colorNumeric(rev(brewer.pal(5, name = "Spectral")),summary_df()$new_tested,na.color = 'transparent')
@@ -238,7 +288,7 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_confirmed,
                     pal = case.colconf,
-                    title = "New Cases<br/>by County") %>% 
+                    title = "New Cases<br/>by County)") %>% 
                 setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5) 
         } else if(input$state != 'U.S' && input$newx == 'New Deaths'){
             basemap %>% 
@@ -272,14 +322,15 @@ server <- function(input, output,session) {
                 setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5)
         }
     }) 
-    output$confirmedTot <- renderValueBox({
+    # box values
+    output$confirmedTot <- renderValueBox({ 
         valueBox(
             if(input$state == "U.S"){
                 summary_country()$new_confirmed
             } else{
                 summary_state()$new_confirmed   
             },
-            "New Cases",
+            "New Cases (Total)",
             icon = icon("check-circle"), color = "blue"
         )
         
@@ -292,7 +343,7 @@ server <- function(input, output,session) {
             } else{
                 summary_state()$new_deceased
             },
-            "New Deaths",
+            "New Deaths (Total)",
             icon = icon("skull-crossbones"), color = "red"
         )
         
@@ -305,13 +356,13 @@ server <- function(input, output,session) {
             } else{
                 summary_state()$new_tested
             },
-            "New Tested",
+            "New Tested (Total)",
             icon = icon("syringe"), color = "teal"
         )
         
         
     })
-    
+    #error messagesfor date
     
     output$DateRange <- renderText({
         # make sure end date later than start date
@@ -319,32 +370,38 @@ server <- function(input, output,session) {
             need(input$date[2] > input$date[1], "  End date is earlier than start date"
             ))
     })
-    
+    # plot output 
     output$plotSumm <- renderPlot({
         if(input$state == 'U.S'){
             ggplot(plot_func_country()) +
-                geom_line(aes(x = date, y = new_deceased, color = "Deaths"), size = 1) +
-                geom_line(aes(x = date, y = new_confirmed, color = "Confirmed Cases"), size = 1) +
-                geom_line(aes(x = date, y = new_tested, color = "Tested"), size = 1) +
+                geom_smooth(aes(x = date, y = new_deceased, color = "Deaths"), size = 1) +
+                geom_point(aes(x = date, y = new_deceased, color = "Deaths")) +
+                geom_smooth(aes(x = date, y = new_confirmed, color = "Confirmed Cases"), size = 1) +
+                geom_point(aes(x = date, y = new_confirmed, color = "Confirmed Cases")) +
+                geom_smooth(aes(x = date, y = new_tested, color = "Tested"), size = 1) +
+                geom_point(aes(x = date, y = new_tested, color = "Tested")) + 
                 scale_color_manual(name = "Legend", 
                                    values = c("Deaths" = "red", 
                                               "Confirmed Cases" = "blue",
                                               "Tested" = "cyan2")) +
                 theme_minimal() +
                 scale_y_log10() +
-                labs(title = "New Confirmed/Deaths/Recovered Daily", x ="Date", y = "Count")
+                labs(title = "New Confirmed/Deaths/Recovered Daily \n in the U.S", x ="Date", y = "Count")
         } else{
             ggplot(plot_func_state()) +
-                geom_line(aes(x = date, y = new_deceased, color = "Deaths"), size = 1) +
-                geom_line(aes(x = date, y = new_confirmed, color = "Confirmed Cases"), size = 1) +
-                geom_line(aes(x = date, y = new_tested, color = "Tested"), size = 1) +
+                geom_smooth(aes(x = date, y = new_deceased, color = "Deaths"), size = 1) +
+                geom_point(aes(x = date, y = new_deceased, color = "Deaths")) +
+                geom_smooth(aes(x = date, y = new_confirmed, color = "Confirmed Cases"), size = 1) +
+                geom_point(aes(x = date, y = new_confirmed, color = "Confirmed Cases")) +
+                geom_smooth(aes(x = date, y = new_tested, color = "Tested"), size = 1) +
+                geom_point(aes(x = date, y = new_tested, color = "Tested")) + 
                 scale_color_manual(name = "Legend", 
                                    values = c("Deaths" = "red", 
                                               "Confirmed Cases" = "blue",
                                               "Tested" = "cyan2")) +
                 theme_minimal() +
                 scale_y_log10() +
-                labs(title = "New Confirmed/Deaths/Recovered Daily", x ="Date", y = "Count")
+                labs(title = "New Confirmed/Deaths/Recovered Daily \n by State", x ="Date", y = "Count")
         }
     })
 }
