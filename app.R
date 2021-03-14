@@ -9,10 +9,12 @@ library(leaflet)
 library(httr)
 library(RColorBrewer)
 library(pool)
+library(jsonlite)
+library(lubridate)
 
 # Establishing connection
 
-# reading in external files to get population/demographic data to join
+# reading in external files to get population per county/demographic data to join
 index <- read.csv("https://storage.googleapis.com/covid19-open-data/v2/index.csv")
 demo <- read.csv("https://storage.googleapis.com/covid19-open-data/v2/demographics.csv")
 
@@ -32,11 +34,37 @@ con <- dbPool(
     billing = "covid19rshinyapp"
 ) # connection to bigquery
 
-
 # authenticate
 bq_auth(path = "covid19rshinyapp-2417098f8315.json")
 
 
+# APIs for latest country population,cases,death totals
+latest_tot <- fromJSON("https://covid-api.mmediagroup.fr/v1/cases?country=US")
+
+# APIs for latest vaccine numbers
+drops <- c("_2nd_dose_allocations")
+vacc_jnj <- fromJSON("https://data.cdc.gov/resource/w9zu-fywh.json?") # vaccines from j&j
+vacc_moderna <- fromJSON("https://data.cdc.gov/resource/b7pe-5nws.json?") # vaccines from moderna
+vacc_pfizer <- fromJSON("https://data.cdc.gov/resource/saz5-9hgg.json?") # vacc_pfizer
+
+# dropping variables to match so that we can bind them
+vacc_moderna <- vacc_moderna[ , !(names(vacc_moderna) %in% drops)] 
+vacc_pfizer <- vacc_pfizer[ , !(names(vacc_pfizer) %in% drops)]
+
+vacc_df <- rbind(vacc_jnj,vacc_moderna,vacc_pfizer) # combining the three types of vaccs
+# renaming
+names(vacc_df)[names(vacc_df) == "_1st_dose_allocations"] <- "dose"
+names(vacc_df)[names(vacc_df) == "jurisdiction"] <- "state"
+vacc_df$dose <- as.numeric(vacc_df$dose)
+
+vacc_tot <- sum(vacc_df$dose)
+
+# group for plot
+vacc_group <- vacc_df %>% group_by(week_of_allocations) %>% summarize(vaccinated = sum(dose))
+
+# removing time from date
+vacc_group$week_of_allocations <- substr(vacc_group$week_of_allocations, 0, 10)
+vacc_rate <- vacc_group %>% summarize(rate = mean(vaccinated))
 
 summary_dbl <- tbl(con,"covid19_open_data") %>% 
     filter(country_name == "United States of America",
@@ -61,12 +89,13 @@ state_names_list <- summary_dbl %>% select(state) %>%
     arrange(state) %>% 
     collect() %>% rename(State = state) # list of states in dataset alphabetically
 
-
-
 ui <- dashboardPage(
     dashboardHeader(title = "U.S COVID-19 Tracker"),
     dashboardSidebar( # in sidebar tab
-        
+        tags$style(type="text/css",
+                   ".shiny-output-error { visibility: hidden; }",
+                   ".shiny-output-error:before { visibility: hidden; }"
+        ),
         title = "Options",
         
         # date input
@@ -84,7 +113,7 @@ ui <- dashboardPage(
                     choices = c("U.S", state_names_list)),
         
         # true/false to scale map
-        checkboxInput("per100","Scale Map to per 100,000 people",value=FALSE),
+        checkboxInput("per100","Scale Map to per 100,000 Population",value=FALSE),
         
         #  what to track
         radioButtons("newx",
@@ -108,15 +137,24 @@ ui <- dashboardPage(
         fluidRow(
             valueBoxOutput("confirmedTot"), # boxes
             valueBoxOutput("deathsTot"),
-            valueBoxOutput("testedTot")
-        ),
+            valueBoxOutput("testedTot")),
         fluidRow(
             box(
                 width = 500, solidHeader=T,
                 collapsible = T,
-                plotOutput("plotSumm"))) # plotting of date,cases
+                plotOutput("plotSumm"))),
+    fluidRow(
+        valueBoxOutput("vaccTot"),
+        valueBoxOutput("vaccPop"),
+        valueBoxOutput("vaccRate")),
+    fluidRow(
+        box(
+            width = 500, solidHeader=T,
+            collapsible = T,
+            plotOutput("plotVacc"))),
     )
 )
+
 # Define server logic required to draw a histogram
 server <- function(input, output,session) {
     
@@ -215,12 +253,11 @@ server <- function(input, output,session) {
                 new_tested = sum(new_tested,na.rm =TRUE)) %>% 
             collect()
         
-        
-    })
+    }) 
     # leafmap
     output$leafmap <- renderLeaflet({
         # change static map options here
-        basemap <- leaflet() %>% addProviderTiles("OpenStreetMap") %>% 
+        basemap <- leaflet() %>% addProviderTiles(providers$CartoDB.Voyager) %>% 
             setMaxBounds( lng1 = -10
                           , lat1 = 10
                           , lng2 = -180
@@ -243,7 +280,7 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_confirmed,
                     pal = case.colconf,
-                    title = "New Cases<br/>by County") %>% 
+                    title = "New Cases per County<br/>by Date Range") %>% 
                 setView(lng = -98.583, lat = 39.833, zoom = 4) 
         } else if(input$state == 'U.S' && input$newx == 'New Deaths'){
             basemap %>% 
@@ -258,7 +295,7 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_deceased,
                     pal = case.coldeath,
-                    title = "New Deaths<br/>by County") %>% 
+                    title = "New Deaths per County<br/>by Date Range") %>% 
                 setView(lng = -98.583, lat = 39.833, zoom = 4)
         } else if(input$state == 'U.S' && input$newx == 'New Tested'){
             basemap %>% 
@@ -273,7 +310,7 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_tested,
                     pal = case.coltest,
-                    title = "New Tested<br/>by County") %>% 
+                    title = "New Tested per County<br/>by Date Range") %>% 
                 setView(lng = -98.583, lat = 39.833, zoom = 4)
         } else if(input$state != 'U.S' && input$newx == "New Confirmed Cases"){
             basemap %>% 
@@ -288,7 +325,7 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_confirmed,
                     pal = case.colconf,
-                    title = "New Cases<br/>by County)") %>% 
+                    title = "New Cases per County<br/>by Date Range") %>% 
                 setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5) 
         } else if(input$state != 'U.S' && input$newx == 'New Deaths'){
             basemap %>% 
@@ -303,7 +340,7 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_deceased,
                     pal = case.coldeath,
-                    title = "New Deaths<br/>by County") %>% 
+                    title = "New Deaths per County<br/>by Date Range") %>% 
                 setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5)
         } else {
             basemap %>% 
@@ -318,51 +355,67 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_tested,
                     pal = case.coltest,
-                    title = "New Tested<br/>by County") %>% 
+                    title = "New Tested per County<br/>by Date Range") %>% 
                 setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5)
         }
     }) 
     # box values
     output$confirmedTot <- renderValueBox({ 
         valueBox(
-            if(input$state == "U.S"){
-                summary_country()$new_confirmed
-            } else{
-                summary_state()$new_confirmed   
-            },
-            "New Cases (Total)",
+            latest_tot$All$confirmed,
+            "Total Cumulative Cases",
             icon = icon("check-circle"), color = "blue"
         )
         
         
     })
+    
     output$deathsTot <- renderValueBox({
         valueBox(
-            if(input$state == "U.S"){
-                summary_country()$new_deceased
-            } else{
-                summary_state()$new_deceased
-            },
-            "New Deaths (Total)",
+                latest_tot$All$deaths,
+            "Total Cumulative Deaths",
             icon = icon("skull-crossbones"), color = "red"
         )
         
         
     })
-    output$testedTot <- renderValueBox({
+    output$vaccTot <- renderValueBox({
         valueBox(
-            if(input$state == "U.S"){
-                summary_country()$new_tested
-            } else{
-                summary_state()$new_tested
-            },
-            "New Tested (Total)",
-            icon = icon("syringe"), color = "teal"
+                vacc_tot,
+                "Cumulative Vacciness Allocated \n (J&J, Pfizer, Moderna)",
+                icon = icon("syringe"), color = "purple"
         )
         
         
     })
-    #error messagesfor date
+    output$vaccPop <- renderValueBox({ # vaccination vs population progress
+        valueBox(
+            paste(round((vacc_tot/latest_tot$All$population * 100),2),"%"),
+            "Vaccination of Population Progress",
+            icon = icon("percent"), color = "purple"
+        )
+        
+        
+    })
+    output$vaccRate<- renderValueBox({ # vaccination vs population progress
+        valueBox(
+            round(vacc_rate),
+            "Rate of Vaccines Allocated per Week",
+            icon = icon("wave-square"), color = "purple"
+        )
+        
+        
+    })
+    output$testedTot <- renderValueBox({ # tests total output
+        valueBox(
+            summary_country()$new_tested,
+            "Total Cumulative Tests",
+            icon = icon("vials"), color = "teal"
+        )
+        
+        
+    })
+    #error messages for date
     
     output$DateRange <- renderText({
         # make sure end date later than start date
@@ -386,7 +439,7 @@ server <- function(input, output,session) {
                                               "Tested" = "cyan2")) +
                 theme_minimal() +
                 scale_y_log10() +
-                labs(title = "New Confirmed/Deaths/Recovered Daily \n in the U.S", x ="Date", y = "Count")
+                labs(title = "Number of New Confirmed/Deaths/Tests Daily \n in the U.S", x ="Date", y = "Count")
         } else{
             ggplot(plot_func_state()) +
                 geom_smooth(aes(x = date, y = new_deceased, color = "Deaths"), size = 1) +
@@ -401,10 +454,17 @@ server <- function(input, output,session) {
                                               "Tested" = "cyan2")) +
                 theme_minimal() +
                 scale_y_log10() +
-                labs(title = "New Confirmed/Deaths/Recovered Daily \n by State", x ="Date", y = "Count")
+                labs(title = "Number of New Confirmed/Deaths/Tests Daily \n in the State", x ="Date", y = "Count")
         }
     })
+    output$plotVacc <- renderPlot({ # plot for vaccinations
+        ggplot(vacc_group, aes(x = week_of_allocations, y = vaccinated)) + 
+            geom_line(group = 1, color = "purple") + geom_point() +
+            theme_minimal() +
+            labs(title = "Number of Vaccinations Allocated \n in the U.S by Week", x ="Date", y = "Count") +
+            theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+    })
+    
 }
-
 # Run the application 
 shinyApp(ui = ui, server = server)
