@@ -81,7 +81,14 @@ summary_dbl <- tbl(con,"covid19_open_data") %>%
 # negative values in tested/confirmed/deceased fixed
 # renaming into easier names
 
-
+cumulative_tested <- tbl(con,"covid19_open_data") %>%
+    filter(country_name == "United States of America",
+           is.na(subregion1_name)) %>% 
+    group_by(country_name) %>%
+    summarize(
+        new_confirmed = sum(new_confirmed,na.rm=TRUE),
+        new_deceased = sum(new_deceased,na.rm = TRUE),
+        new_tested = sum(new_tested,na.rm =TRUE)) %>% collect()
 
 state_names_list <- summary_dbl %>% select(state) %>% 
     distinct(state) %>% 
@@ -130,14 +137,18 @@ ui <- dashboardPage(
     ),
     dashboardBody(
         fluidRow(
+            valueBoxOutput("confirmedTot"), # boxes
+            valueBoxOutput("deathsTot"),
+            valueBoxOutput("testedTot")),
+        fluidRow(
             box(width = 12,
                 leafletOutput("leafmap") # output leaflet map in main body
                 
             )),
         fluidRow(
-            valueBoxOutput("confirmedTot"), # boxes
-            valueBoxOutput("deathsTot"),
-            valueBoxOutput("testedTot")),
+            valueBoxOutput("confirmedSum"), # boxes
+            valueBoxOutput("deathsSum"),
+            valueBoxOutput("testedSum")),
         fluidRow(
             box(
                 width = 500, solidHeader=T,
@@ -151,7 +162,7 @@ ui <- dashboardPage(
         box(
             width = 500, solidHeader=T,
             collapsible = T,
-            plotOutput("plotVacc"))),
+            plotOutput("plotVacc")))
     )
 )
 
@@ -363,7 +374,20 @@ server <- function(input, output,session) {
     output$confirmedTot <- renderValueBox({ 
         valueBox(
             latest_tot$All$confirmed,
-            "Total Cumulative Cases",
+            "Cumulative Cases",
+            icon = icon("check-circle"), color = "black"
+        )
+        
+        
+    })
+    output$confirmedSum <- renderValueBox({ 
+        valueBox(
+            if(input$state == "U.S"){
+            summary_country()$new_confirmed
+            } else {
+            summary_state()$new_confirmed
+            },
+            paste("Cumulative New Cases by Date Range(",input$state,")"),
             icon = icon("check-circle"), color = "blue"
         )
         
@@ -372,8 +396,22 @@ server <- function(input, output,session) {
     
     output$deathsTot <- renderValueBox({
         valueBox(
-                latest_tot$All$deaths,
-            "Total Cumulative Deaths",
+            latest_tot$All$deaths,
+            "Cumulative Deaths",
+            icon = icon("skull-crossbones"), color = "black"
+        )
+        
+        
+    })
+    
+    output$deathsSum <- renderValueBox({ 
+        valueBox(
+            if(input$state == "U.S"){
+                summary_country()$new_deceased
+            } else{
+                summary_state()$new_deceased
+            },
+            paste("Cumulative New Deaths by Date Range(",input$state,")"),
             icon = icon("skull-crossbones"), color = "red"
         )
         
@@ -382,8 +420,22 @@ server <- function(input, output,session) {
     output$vaccTot <- renderValueBox({
         valueBox(
                 vacc_tot,
-                "Cumulative Vacciness Allocated \n (J&J, Pfizer, Moderna)",
+                "Total Cumulative Vaccines Allocated \n (J&J, Pfizer, Moderna)",
                 icon = icon("syringe"), color = "purple"
+        )
+        
+        
+    })
+    
+    output$testedSum <- renderValueBox({ 
+        valueBox(
+            if(input$state == "U.S"){
+                summary_country()$new_tested
+            } else{
+                summary_state()$new_tested
+            },
+            paste("Cumulative New Tests by Date Range(",input$state,")"),
+            icon = icon("vials"), color = "teal"
         )
         
         
@@ -408,9 +460,9 @@ server <- function(input, output,session) {
     })
     output$testedTot <- renderValueBox({ # tests total output
         valueBox(
-            summary_country()$new_tested,
-            "Total Cumulative Tests",
-            icon = icon("vials"), color = "teal"
+            cumulative_tested$new_tested,
+            "Cumulative Tests",
+            icon = icon("vials"), color = "black"
         )
         
         
