@@ -11,6 +11,7 @@ library(RColorBrewer)
 library(pool)
 library(jsonlite)
 library(lubridate)
+library(ggplot2)
 
 # Establishing connection
 
@@ -373,7 +374,7 @@ server <- function(input, output,session) {
     # box values
     output$confirmedTot <- renderValueBox({ 
         valueBox(
-            latest_tot$All$confirmed,
+            scales::label_number_si(accuracy=0.1)(as.numeric(latest_tot$All$confirmed)),
             "Cumulative Cases",
             icon = icon("check-circle"), color = "black"
         )
@@ -383,9 +384,9 @@ server <- function(input, output,session) {
     output$confirmedSum <- renderValueBox({ 
         valueBox(
             if(input$state == "U.S"){
-            summary_country()$new_confirmed
+                scales::label_number_si(accuracy=0.1)(as.numeric(summary_country()$new_confirmed))
             } else {
-            summary_state()$new_confirmed
+                scales::label_number_si(accuracy=0.1)(as.numeric(summary_state()$new_confirmed))
             },
             paste("Cumulative New Cases by Date Range(",input$state,")"),
             icon = icon("check-circle"), color = "blue"
@@ -396,7 +397,7 @@ server <- function(input, output,session) {
     
     output$deathsTot <- renderValueBox({
         valueBox(
-            latest_tot$All$deaths,
+            scales::label_number_si(accuracy=0.1)(as.numeric(latest_tot$All$deaths)),
             "Cumulative Deaths",
             icon = icon("skull-crossbones"), color = "black"
         )
@@ -407,9 +408,9 @@ server <- function(input, output,session) {
     output$deathsSum <- renderValueBox({ 
         valueBox(
             if(input$state == "U.S"){
-                summary_country()$new_deceased
+                scales::label_number_si(accuracy=0.1)(as.numeric(summary_country()$new_deceased))
             } else{
-                summary_state()$new_deceased
+                scales::label_number_si(accuracy=0.1)(as.numeric(summary_state()$new_deceased))
             },
             paste("Cumulative New Deaths by Date Range(",input$state,")"),
             icon = icon("skull-crossbones"), color = "red"
@@ -419,7 +420,7 @@ server <- function(input, output,session) {
     })
     output$vaccTot <- renderValueBox({
         valueBox(
-                vacc_tot,
+            scales::label_number_si(accuracy=0.1)(as.numeric(vacc_tot)),
                 "Total Cumulative Vaccines Allocated \n (J&J, Pfizer, Moderna)",
                 icon = icon("syringe"), color = "purple"
         )
@@ -430,9 +431,9 @@ server <- function(input, output,session) {
     output$testedSum <- renderValueBox({ 
         valueBox(
             if(input$state == "U.S"){
-                summary_country()$new_tested
+                scales::label_number_si(accuracy=0.1)(as.numeric(summary_country()$new_tested))
             } else{
-                summary_state()$new_tested
+                scales::label_number_si(accuracy=0.1)(as.numeric(summary_state()$new_tested))
             },
             paste("Cumulative New Tests by Date Range(",input$state,")"),
             icon = icon("vials"), color = "teal"
@@ -451,7 +452,7 @@ server <- function(input, output,session) {
     })
     output$vaccRate<- renderValueBox({ # vaccination vs population progress
         valueBox(
-            round(vacc_rate),
+            scales::label_number_si(accuracy=0.1)(as.numeric(vacc_rate)),
             "Rate of Vaccines Allocated per Week",
             icon = icon("wave-square"), color = "purple"
         )
@@ -460,7 +461,7 @@ server <- function(input, output,session) {
     })
     output$testedTot <- renderValueBox({ # tests total output
         valueBox(
-            cumulative_tested$new_tested,
+            scales::label_number_si(accuracy=0.1)(as.numeric(cumulative_tested$new_tested)),
             "Cumulative Tests",
             icon = icon("vials"), color = "black"
         )
@@ -506,7 +507,7 @@ server <- function(input, output,session) {
                                               "Tested" = "cyan2")) +
                 theme_minimal() +
                 scale_y_log10() +
-                labs(title = "Number of New Confirmed/Deaths/Tests Daily \n in the State", x ="Date", y = "Count")
+                labs(title = paste("Number of New Confirmed/Deaths/Tests Daily \n in",input$state), x ="Date", y = "Count")
         }
     })
     output$plotVacc <- renderPlot({ # plot for vaccinations
