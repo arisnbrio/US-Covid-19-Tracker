@@ -143,9 +143,8 @@ ui <- dashboardPage(
             valueBoxOutput("testedTot")),
         fluidRow(
             box(width = 12,
-                leafletOutput("leafmap") # output leaflet map in main body
-                
-            )),
+                leafletOutput("leafmap"), # output leaflet map in main body
+            actionButton("button","Reset Map View"))),
         fluidRow(
             valueBoxOutput("confirmedSum"), # boxes
             valueBoxOutput("deathsSum"),
@@ -270,11 +269,11 @@ server <- function(input, output,session) {
     output$leafmap <- renderLeaflet({
         # change static map options here # default map
         leaflet() %>% addProviderTiles(providers$OpenStreetMap) %>% 
-            setMaxBounds( lng1 = -10
+            setMaxBounds( lng1 = -10 # boundaries where map can be dragged to
                           , lat1 = 10
                           , lng2 = -180
                           , lat2 = 90) %>% 
-            setView(lng = -98.583, lat = 39.833, zoom = 4) 
+            setView(lng = -98.583, lat = 39.833, zoom = 4) # view of US
     })
     observe({
         # color palettes
@@ -337,8 +336,7 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_confirmed,
                     pal = case.colconf,
-                    title = "New Cases per County<br/>by Date Range") %>% 
-                setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5.5) 
+                    title = "New Cases per County<br/>by Date Range") 
         } else if(input$state != 'U.S' && input$newx == 'New Deaths'){
             leafletProxy("leafmap") %>% clearMarkers() %>% clearControls() %>%
                 addCircleMarkers(data = summary_df(), 
@@ -352,8 +350,7 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_deceased,
                     pal = case.coldeath,
-                    title = "New Deaths per County<br/>by Date Range") %>% 
-                setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5.5)
+                    title = "New Deaths per County<br/>by Date Range") 
         } else {
             leafletProxy("leafmap") %>% clearMarkers() %>% clearControls() %>%
                 addCircleMarkers(data = summary_df(), 
@@ -367,10 +364,23 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_tested,
                     pal = case.coltest,
-                    title = "New Tested per County<br/>by Date Range") %>% 
-                setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5.5)
+                    title = "New Tested per County<br/>by Date Range")
         }
-    }) 
+    })
+    
+    observeEvent(input$button, { # press button to reset map to default
+        
+        leafletProxy("leafmap") %>% setView(lng = -98.583, lat = 39.833, zoom = 4) # view of US
+        
+    })
+    
+    observeEvent(input$state, { # sends camera to state
+        
+        if(input$state == "U.S"){
+        leafletProxy("leafmap") %>% setView(lng = -98.583, lat = 39.833, zoom = 4) # view of US
+        } else
+        leafletProxy("leafmap") %>% setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5.5)
+    })
     # box values
     output$confirmedTot <- renderValueBox({ 
         valueBox(
