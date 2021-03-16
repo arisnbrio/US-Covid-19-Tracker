@@ -268,19 +268,22 @@ server <- function(input, output,session) {
     }) 
     # leafmap
     output$leafmap <- renderLeaflet({
-        # change static map options here
-        basemap <- leaflet() %>% addProviderTiles(providers$CartoDB.Voyager) %>% 
+        # change static map options here # default map
+        leaflet() %>% addProviderTiles(providers$OpenStreetMap) %>% 
             setMaxBounds( lng1 = -10
                           , lat1 = 10
                           , lng2 = -180
-                          , lat2 = 90)
+                          , lat2 = 90) %>% 
+            setView(lng = -98.583, lat = 39.833, zoom = 4) 
+    })
+    observe({
         # color palettes
         case.colconf <- colorNumeric(rev(brewer.pal(5, name = "Spectral")),summary_df()$new_confirmed,na.color = 'transparent')
         case.coldeath <- colorNumeric(rev(brewer.pal(5, name = "Spectral")),summary_df()$new_deceased,na.color = 'transparent')
         case.coltest <- colorNumeric(rev(brewer.pal(5, name = "Spectral")),summary_df()$new_tested,na.color = 'transparent')
         
         if (input$state == 'U.S' && input$newx == 'New Confirmed Cases'){
-            basemap %>% 
+            leafletProxy("leafmap") %>% clearMarkers() %>% clearControls() %>%
                 addCircleMarkers(data = summary_df(), 
                                  lat = ~latitude, 
                                  lng = ~longitude,
@@ -292,10 +295,9 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_confirmed,
                     pal = case.colconf,
-                    title = "New Cases per County<br/>by Date Range") %>% 
-                setView(lng = -98.583, lat = 39.833, zoom = 4) 
+                    title = "New Cases per County<br/>by Date Range")
         } else if(input$state == 'U.S' && input$newx == 'New Deaths'){
-            basemap %>% 
+            leafletProxy("leafmap") %>% clearMarkers() %>% clearControls() %>%
                 addCircleMarkers(data = summary_df(), 
                                  lat = ~latitude, 
                                  lng = ~longitude,
@@ -307,10 +309,9 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_deceased,
                     pal = case.coldeath,
-                    title = "New Deaths per County<br/>by Date Range") %>% 
-                setView(lng = -98.583, lat = 39.833, zoom = 4)
+                    title = "New Deaths per County<br/>by Date Range")
         } else if(input$state == 'U.S' && input$newx == 'New Tested'){
-            basemap %>% 
+            leafletProxy("leafmap") %>% clearMarkers() %>% clearControls() %>%
                 addCircleMarkers(data = summary_df(), 
                                  lat = ~latitude, 
                                  lng = ~longitude,
@@ -322,10 +323,9 @@ server <- function(input, output,session) {
                     position = 'topright',
                     values = summary_df()$new_tested,
                     pal = case.coltest,
-                    title = "New Tested per County<br/>by Date Range") %>% 
-                setView(lng = -98.583, lat = 39.833, zoom = 4)
+                    title = "New Tested per County<br/>by Date Range")
         } else if(input$state != 'U.S' && input$newx == "New Confirmed Cases"){
-            basemap %>% 
+            leafletProxy("leafmap") %>% clearMarkers() %>% clearControls() %>%
                 addCircleMarkers(data = summary_df(), 
                                  lat = ~latitude, 
                                  lng = ~longitude,
@@ -338,9 +338,9 @@ server <- function(input, output,session) {
                     values = summary_df()$new_confirmed,
                     pal = case.colconf,
                     title = "New Cases per County<br/>by Date Range") %>% 
-                setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5) 
+                setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5.5) 
         } else if(input$state != 'U.S' && input$newx == 'New Deaths'){
-            basemap %>% 
+            leafletProxy("leafmap") %>% clearMarkers() %>% clearControls() %>%
                 addCircleMarkers(data = summary_df(), 
                                  lat = ~latitude, 
                                  lng = ~longitude,
@@ -353,9 +353,9 @@ server <- function(input, output,session) {
                     values = summary_df()$new_deceased,
                     pal = case.coldeath,
                     title = "New Deaths per County<br/>by Date Range") %>% 
-                setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5)
+                setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5.5)
         } else {
-            basemap %>% 
+            leafletProxy("leafmap") %>% clearMarkers() %>% clearControls() %>%
                 addCircleMarkers(data = summary_df(), 
                                  lat = ~latitude, 
                                  lng = ~longitude,
@@ -368,7 +368,7 @@ server <- function(input, output,session) {
                     values = summary_df()$new_tested,
                     pal = case.coltest,
                     title = "New Tested per County<br/>by Date Range") %>% 
-                setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5)
+                setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5.5)
         }
     }) 
     # box values
