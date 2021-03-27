@@ -19,6 +19,7 @@ library(ggplot2)
 index <- read.csv("https://storage.googleapis.com/covid19-open-data/v2/index.csv")
 demo <- read.csv("https://storage.googleapis.com/covid19-open-data/v2/demographics.csv")
 
+# population for each county
 pop <- index %>% inner_join(demo, by = "key") %>% 
     filter(country_name == "United States of America",
            !is.na(subregion1_name)) %>%
@@ -26,6 +27,12 @@ pop <- index %>% inner_join(demo, by = "key") %>%
     rename(state = subregion1_name, 
            city_county = subregion2_name, 
            location_key = key) 
+pop_us <- index %>% inner_join(demo, by = "key") %>% 
+    filter(key == "US") %>%
+    rename(state = subregion1_name, 
+           city_county = subregion2_name, 
+           location_key = key) %>% select(population)
+
 pop <- pop[!(is.na(pop$city_county) | pop$city_county ==""), ] # removed "" values
 
 con <- dbPool(
@@ -39,8 +46,6 @@ con <- dbPool(
 bq_auth(path = "covid19rshinyapp-2417098f8315.json")
 
 
-# APIs for latest country population,cases,death totals
-latest_tot <- fromJSON("https://covid-api.mmediagroup.fr/v1/cases?country=US")
 
 # APIs for latest vaccine numbers
 drops <- c("_2nd_dose_allocations")
@@ -82,7 +87,8 @@ summary_dbl <- tbl(con,"covid19_open_data") %>%
 # negative values in tested/confirmed/deceased fixed
 # renaming into easier names
 
-cumulative_tested <- tbl(con,"covid19_open_data") %>%
+# cumulative values for box values
+cumulative_stats <- tbl(con,"covid19_open_data") %>%
     filter(country_name == "United States of America",
            is.na(subregion1_name)) %>% 
     group_by(country_name) %>%
@@ -91,6 +97,7 @@ cumulative_tested <- tbl(con,"covid19_open_data") %>%
         new_deceased = sum(new_deceased,na.rm = TRUE),
         new_tested = sum(new_tested,na.rm =TRUE)) %>% collect()
 
+# input for states
 state_names_list <- summary_dbl %>% select(state) %>% 
     distinct(state) %>% 
     filter(!is.na(state)) %>%
@@ -378,15 +385,36 @@ server <- function(input, output,session) {
         leafletProxy("leafmap") %>% setView(lng = summary_state()$longitude, lat = summary_state()$latitude, zoom = 5.5)
     })
     # box values
-    output$confirmedTot <- renderValueBox({ 
+    output$confirmedTot <- renderValueBox({ # overall cumulative confirmed
         valueBox(
-            scales::label_number_si(accuracy=0.1)(as.numeric(latest_tot$All$confirmed)),
+            scales::label_number_si(accuracy=0.1)(as.numeric(cumulative_stats$new_confirmed)),
             "Cumulative Cases",
             icon = icon("check-circle"), color = "black"
         )
         
         
     })
+    
+    output$deathsTot <- renderValueBox({ # overall cumulative deaths
+        valueBox(
+            scales::label_number_si(accuracy=0.1)(as.numeric(cumulative_stats$new_deceased)),
+            "Cumulative Deaths",
+            icon = icon("skull-crossbones"), color = "black"
+        )
+        
+        
+    })
+    
+    output$testedTot <- renderValueBox({ # overall cumulative tests
+        valueBox(
+            scales::label_number_si(accuracy=0.1)(as.numeric(cumulative_stats$new_tested)),
+            "Cumulative Tests",
+            icon = icon("vials"), color = "black"
+        )
+        
+        
+    })
+    
     output$confirmedSum <- renderValueBox({ 
         valueBox(
             if(input$state == "U.S"){
@@ -401,15 +429,6 @@ server <- function(input, output,session) {
         
     })
     
-    output$deathsTot <- renderValueBox({
-        valueBox(
-            scales::label_number_si(accuracy=0.1)(as.numeric(latest_tot$All$deaths)),
-            "Cumulative Deaths",
-            icon = icon("skull-crossbones"), color = "black"
-        )
-        
-        
-    })
     
     output$deathsSum <- renderValueBox({ 
         valueBox(
@@ -449,7 +468,7 @@ server <- function(input, output,session) {
     })
     output$vaccPop <- renderValueBox({ # vaccination vs population progress
         valueBox(
-            paste(round((vacc_tot/latest_tot$All$population * 100),2),"%"),
+            paste(round((vacc_tot/pop_us * 100),2),"%"),
             "Vaccination Allocation vs. Population Progress",
             icon = icon("percent"), color = "purple"
         )
@@ -465,15 +484,7 @@ server <- function(input, output,session) {
         
         
     })
-    output$testedTot <- renderValueBox({ # tests total output
-        valueBox(
-            scales::label_number_si(accuracy=0.1)(as.numeric(cumulative_tested$new_tested)),
-            "Cumulative Tests",
-            icon = icon("vials"), color = "black"
-        )
-        
-        
-    })
+
     #error messages for date
     
     output$DateRange <- renderText({
