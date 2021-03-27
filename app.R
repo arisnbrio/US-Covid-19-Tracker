@@ -100,19 +100,15 @@ state_names_list <- summary_dbl %>% select(state) %>%
 ui <- dashboardPage(
     dashboardHeader(title = "U.S COVID-19 Tracker"),
     dashboardSidebar( # in sidebar tab
-        tags$style(type="text/css",
-                   ".shiny-output-error { visibility: hidden; }",
-                   ".shiny-output-error:before { visibility: hidden; }"
-        ),
         title = "Options",
         
         # date input
         dateRangeInput('date',
                        strong('Date Range'),
-                       start = "2021-01-01",
+                       start = Sys.Date()-21,
                        min = "2020-01-22",
-                       max = as.character(Sys.Date()),
-                       end = "2021-01-29"),
+                       max = Sys.Date(),
+                       end = Sys.Date()),
         textOutput("DateRange"), # for error
         
         #input for selecting state 
@@ -454,7 +450,7 @@ server <- function(input, output,session) {
     output$vaccPop <- renderValueBox({ # vaccination vs population progress
         valueBox(
             paste(round((vacc_tot/latest_tot$All$population * 100),2),"%"),
-            "Vaccination of Population Progress",
+            "Vaccination Allocation vs. Population Progress",
             icon = icon("percent"), color = "purple"
         )
         
@@ -482,8 +478,8 @@ server <- function(input, output,session) {
     
     output$DateRange <- renderText({
         # make sure end date later than start date
-        validate(
-            need(input$date[2] > input$date[1], "  End date is earlier than start date"
+        shiny::validate(
+            need(input$date[2] > input$date[1], "  Error: End date is earlier than start date"
             ))
     })
     # plot output 
@@ -502,7 +498,7 @@ server <- function(input, output,session) {
                                               "Tested" = "cyan2")) +
                 theme_minimal() +
                 scale_y_log10() +
-                labs(title = "Number of New Confirmed/Deaths/Tests Daily \n in the U.S", x ="Date", y = "Count")
+                labs(title = "Number of New Confirmed/Deaths/Tests Daily \n in the U.S by Date Range", x ="Date", y = "Count")
         } else{
             ggplot(plot_func_state()) +
                 geom_smooth(aes(x = date, y = new_deceased, color = "Deaths"), size = 1) +
