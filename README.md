@@ -8,4 +8,4 @@ US COVID-19 app includes interactive map with timeline function, ability to scal
  
 Updates: Data for the app is updated based on Google Bigquery's database. Vaccine data is updated based on the API from https://data.cdc.gov/.
 
-Link to app: https://arishiny.shinyapps.io/UScovidtracker/
+Link to app: https://arishiny.shinyapps.io/US-Covid-19-Tracker/
